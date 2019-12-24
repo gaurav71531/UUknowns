@@ -4,11 +4,6 @@ Gaurav Gupta, Sergio Pequito, and Paul Bogdan. In ACC 2018. [arXiv:1803.04866](h
 
 ![Image](http://scf.usc.edu/~ggaurav/pics/complexNetUU.png)
 
-$$
-\Delta^{\alpha} x[k+1] = Ax[k] + e[k]\\
-y[k] = Cx[k]
-$$
-
 **Language:** The code package is available in Python and Matlab
 
 ## Citation
