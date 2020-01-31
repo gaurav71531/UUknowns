@@ -7,14 +7,14 @@ function [Aout,Bout,order,u,relErr] = modelEstNewv2(varargin)
 %
 % numInp: unknown input dimensions (must be less than length(sensInd) )
 % 
-% data: input data of size NxD, where 'N' is number of samples and 'D' is
+% data: input data of size DxN, where 'N' is number of samples and 'D' is
 % state dimension
 % 
 % silentFlag: for toggling script intermediary status outputs
 
 % sample Input:
 % 
-% data: matrix of size NxD as explained above
+% data: matrix of size DxN as explained above
 % say, N = 500 and D = 64 and,
 % select states from index 1->32 and,
 % we wish to have number of unknown inputs to be 16
@@ -113,10 +113,10 @@ numCh = length(sensInd);
 
 % % % X = data(sensInd,sampleID);
 
-X = data';
+X = data;
 
 % % % temp
-K = size(data,2);
+K = size(X,2);
 
 %  center data
 X = bsxfun(@minus, X, mean(X,2));
