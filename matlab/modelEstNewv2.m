@@ -93,9 +93,7 @@ else
     numInp = 32;
     patInpStr = 'S001R03_edfm.mat';
     matObj = matfile(patInpStr);
-    record = matObj.record;
-    data = record(1:64, 2100:2100+1000 - 1)';
-
+    data = matObj.record;
     silentFlag = 0;
     calledFromOutside = 0;
     cvForLambda = 0;
@@ -104,10 +102,21 @@ else
     end
 end
 
+% sensInd = 1:4;
+% numInp = 2;
 numCh = length(sensInd);
+% % % K = 1000;
+% K = 500;
+% sampleID = 1:K;
+% % % sampleID = [0:K-1]+5000;
+% sampleID = [0:K-1]+8900;
+
+% % % X = data(sensInd,sampleID);
 
 X = data';
-K = size(X,2);
+
+% % % temp
+K = size(data,2);
 
 %  center data
 X = bsxfun(@minus, X, mean(X,2));
@@ -116,30 +125,62 @@ order = zeros(numCh,1);
 infit = 20;
 
 yCascade = zeros(numCh, K); % [y[0], y[1], ..., y[K-1]]
+
 for i = 1:numCh
-    order(i) = WT_estimator_v4(X(i,:),1);
+    order(i) = WT_estimator_v3(X(i,:),1);
     yCascade(i,:) = getFractionalExpan(X(i,1:K),order(i),infit);
 end
 
 niter = 30;
-A = cell(niter,1);
+A = cell(niter);
 B = cell(niter,1);
 
 [A{1},mse] = performLeastSq(yCascade, X(:,1:K), p, 0,'woInp');
-A1Use = A{1}(:,1:numCh);
-B_1 = zeros(size(A1Use,1),size(A1Use,2));
-B_1(abs(A1Use)>0.01) = A1Use(abs(A1Use)>0.01);
-[~,r] = qr(B_1);
-colInd = find(abs(diag(r))>1e-7);
-if length(colInd) < numInp
-    B_1 = [eye(numInp);zeros(numCh-numInp,numInp)];
-else
-    colInd = colInd(1:numInp);
-    B_1 = B_1(:,colInd);
-end
+% for i = 1:p
+%     A{1,i} = ABig(:, (i-1)*numCh+1:i*numCh);
+% end
 
-if rank(B_1) < numInp
-    error('rank deficient B');
+% B = double(A{1} > 0.01); %assumption right now
+% % % % % B = zeros(size(A{1},1),size(A{1},2));
+% % % % % B(A{1}>0.01) = A{1}(A{1}>0.01);
+% % % % % [~,r] = qr(B);
+% % % % % colInd = find(abs(diag(r))>1e-7);
+% % % % % colInd = colInd(1:numInp);
+% % % % % % colInd = [1:4,6:26,28:34];
+% % % % % B = B(:,colInd);
+
+if numInp == 0
+    Aout = A{1};
+    Bout = 0;
+    u = 0;
+    T = K;
+    numStep = 1;
+    % chUse = 10;
+%     chUse = 1;
+    % without inputs
+    xPred = predictValues(X, order, p, T, numStep, A{1}, Bout, zeros(size(Bout,2),K));
+    % mean squared error across all channels 
+    relErr = sqrt(sum(sum((xPred-X).^2))/T/numCh);
+    return
+else
+    A1Use = A{1}(:,1:numCh);
+    B_1 = zeros(size(A1Use,1),size(A1Use,2));
+    B_1(abs(A1Use)>0.01) = A1Use(abs(A1Use)>0.01);
+    [~,r] = qr(B_1);
+    colInd = find(abs(diag(r))>1e-7);
+    if length(colInd) < numInp
+        B_1 = [eye(numInp);zeros(numCh-numInp,numInp)];
+    else
+        colInd = colInd(1:numInp);
+        % colInd = [1:4,6:26,28:34];
+        B_1 = B_1(:,colInd);
+    end
+
+    % B = [eye(numInp);zeros(numCh-numInp,numInp)];
+    if rank(B_1) < numInp
+        error('rank deficient B');
+    end
+   
 end
 B{1} = B_1;
 
@@ -152,19 +193,21 @@ else
     lambdaUse = 4;
 end
 
+% niter = 50;
 mseIter = zeros(niter+1,1);
 mseIter(1) = mse;
+[Aout, Bout, u, mseIter] = performEM(A, B, p, yCascade, X, lambdaUse, niter, mseIter, silentFlag);
 
 % predict values for models, k-step prediction
-% T = K;
-T = 1000;
-numStep = 10;
-chUse = 3;
-xPred_woi = predictValues(X(:,1:T), order, p, T, numStep, A{1}, zeros(numCh, numInp),...
-    zeros(numInp,K));
+T = K;
+% numStep = 100;
+numStep = 1;
+% chUse = 10;
+chUse = 1;
+% without inputs
+xPred = predictValues(X, order, p, T, numStep, A{1}, Bout, zeros(size(Bout,2),K));
 % mean squared error across all channels 
-relErr1 = sqrt(sum(sum((xPred_woi-X(:,1:T)).^2))/T/numCh);
-relErr1_2 = sqrt(sum(sum(((xPred_woi-X(:,1:T)).^2)./(X(:,1:T).^2)))/T/numCh);
+relErr1 = sqrt(sum(sum((xPred-X).^2))/T/numCh);
 
 % figure;
 % subplot(2,1,1);
@@ -173,9 +216,8 @@ relErr1_2 = sqrt(sum(sum(((xPred_woi-X(:,1:T)).^2)./(X(:,1:T).^2)))/T/numCh);
 % legend({'observed', 'predicted'});
 
 % with inputs
-% xPred_wi = predictValues(X, order, p, T, numStep, A{end}, Bout, u);
-% relErr2 = sqrt(sum(sum((xPred_wi-X).^2))/T/numCh);
-relErr2 = 0;
+xPred = predictValues(X, order, p, T, numStep, Aout, Bout, u);
+relErr2 = sqrt(sum(sum((xPred-X).^2))/T/numCh);
 
 % % no fractional order
 % AUse = performLeastSq(X, X(:,1:K));
@@ -188,51 +230,15 @@ relErr2 = 0;
 % title(sprintf('model with inputs'));
 % legend({'observed', 'predicted'});
 
-[A_AR1,~] = performLeastSq(X, X, p, 0, 'woInp');
-xPred_AR1 = predictValues(X(:,1:T), ones(numCh, 1), p, T, numStep, A_AR1,...
-    zeros(numCh, numInp), zeros(numInp, T));
-relErrA_AR = sqrt(sum(sum((xPred_AR1-X(:,1:T)).^2))/T/numCh);
-
-figure;plot(1:T, X(chUse,1:T), 'b');
-hold on;
-plot(1:T, xPred_woi(chUse,:), 'r');
-hold on;
-plot(1:T, xPred_AR1(chUse,:), 'g');
-grid;
-
-pUse = 5;
-
-[A_p,~] = performLeastSq(yCascade, X, pUse, 0,'woInp');
-xPred_woi_p = predictValues(X(:,1:T), order, pUse, T, numStep, A_p, zeros(numCh, numInp),...
-    zeros(numInp,K));
-relErr_p = sqrt(sum(sum((xPred_woi_p-X(:,1:T)).^2))/T/numCh);
-
-[A_ARp,~] = performLeastSq(X, X, pUse, 0, 'woInp');
-xPred_ARp = predictValues(X(:,1:T), ones(numCh, 1), pUse, T, numStep, A_ARp,...
-    zeros(numCh, numInp), zeros(numInp, T));
-relErr_ARp = sqrt(sum(sum((xPred_ARp-X(:,1:T)).^2))/T/numCh);
-
 % if ~calledFromOutside
 %     figure;
 %     plot(sampleID, X(chUse,1:T), 'b', sampleID, xPred(chUse,1:T), 'r');grid;
 %     legend({'observed', 'predicted'});
 % end
 
-
-% figure;
-% plot(1:T, X(chUse,1:T), 'b', 1:T, xPred(chUse,1:T), 'r');grid;
-% hold on;
-% plot(1:T, xPred_AR(chUse, 1:T), 'g');
-% legend({'observed', 'fractional', 'AR(1)'});
-
-
 % fprintf('rel Err without inputs = %f\n', relErr1);
 % fprintf('rel Err with inputs = %f\n', relErr2);
-relErr = [relErr1,relErr2,relErrA_AR];
-fprintf('r1 = %f, r2 = %f\n', relErr1, relErrA_AR);
-if ~calledFromOutside
-    figure;plot(1:T, X(chUse,1:T), 'b', 1:T, xPred_woi(chUse,:), 'r', 1:K, xPred_AR1(chUse,:), 'g');grid;
-end
+relErr = [relErr1,relErr2];
 
 
 function lambdaUse = performLambdaCV(lambdaRange, A, B, p, order, yCascade, X, silentFlag)
@@ -267,10 +273,10 @@ if ~silentFlag,fprintf('before iteration, mse = %f\n', mseIter(1));end
 
 for iterInd = 1:niter
     for kInd = 2:K
-        XUse = zeros(numCh*p,1);
+        XUse = zeroz(numCh, p);
         for pInd = 1:p
             if pInd>=kInd, break;end
-            XUse((pInd-1)*numCh+1:pInd*numCh,1) = X(:,kInd-pInd);
+            XUse(:,pInd) = X(:,kInd-pInd);
         end
         yUse = yCascade(:,kInd) - A{iterInd}*XUse;
         u(:,kInd) = getLassoSoln(B{iterInd}, yUse, lambda);
@@ -288,8 +294,7 @@ for iterInd = 1:niter
         
     if ~silentFlag,fprintf('iter ind = %d, mse = %f\n', iterInd, mseIter(iterInd+1));end
 end
-% Aout = A{end};
-Aout = A;
+Aout = A{end};
 Bout = B{end};
 
 
@@ -317,10 +322,10 @@ for i = 2:TSteps
                     - XTemp(chInd,(i-1)*numStep + stepInd-j)*preFact';
             end
         end
-        XUse = zeros(numCh*p,1);
+        XUse = zeros(numCh, p);
         for pInd = 1:p
             if (i-1)*numStep + stepInd - pInd < 1, break;end
-            XUse((pInd-1)*numCh+1:pInd*numCh,1) = XTemp(:,(i-1)*numStep + stepInd - pInd);
+            XUse(:,pInd) = XTemp(:,(i-1)*numStep + stepInd - pInd);
         end
         XTemp(:,(i-1)*numStep + stepInd) = XTemp(:,(i-1)*numStep + stepInd) ...
             + A*XUse ...
