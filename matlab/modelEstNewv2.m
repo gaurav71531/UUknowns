@@ -113,7 +113,7 @@ numCh = length(sensInd);
 
 % % % X = data(sensInd,sampleID);
 
-X = data;
+X = data(sensInd,:);
 
 % % % temp
 K = size(X,2);
@@ -127,10 +127,10 @@ infit = 20;
 yCascade = zeros(numCh, K); % [y[0], y[1], ..., y[K-1]]
 
 for i = 1:numCh
-    order(i) = WT_estimator_v3(X(i,:),1);
+    order(i) = WT_estimator_v4(X(i,:),1);
     yCascade(i,:) = getFractionalExpan(X(i,1:K),order(i),infit);
 end
-
+numInp =  0;
 niter = 30;
 A = cell(niter);
 B = cell(niter,1);
